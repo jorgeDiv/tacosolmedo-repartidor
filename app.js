@@ -1,0 +1,291 @@
+/* =========================================================
+   Tacos Olmedo · Repartidor  (PWA / APK)
+   Sincroniza con la web vía localStorage('tacosOrders')
+   + BroadcastChannel + evento 'storage' (multi-pestaña/dispositivo).
+   ========================================================= */
+
+const REP_PASS = "tacos789";          // En producción: mover a backend.
+const ORDERS_KEY = "tacosOrders";      // Misma clave que la web de pedidos.
+const LOC_KEY = "repLocation";
+const DEMO_KEY = "repDemoSeeded";
+const SESSION_KEY = "repAuth";
+
+/* ---------- Iconos SVG (offline) ---------- */
+const IC = {
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>',
+  logout:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>',
+  map:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>',
+  nav:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>',
+  phone:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z"/></svg>',
+  plus:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  close:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  route:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h6a3 3 0 000-6H9a3 3 0 010-6h6"/></svg>'
+};
+
+/* ---------- Estado ---------- */
+let orders = [];
+let currentFilter = "Todo";
+
+/* ---------- Utilidades ---------- */
+const $ = id => document.getElementById(id);
+const fmtMoney = n => "$" + Number(n).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function parseTotal(t) {
+  if (typeof t === "number") return t;
+  const m = String(t).replace(/[^0-9.]/g, "");
+  return m ? parseFloat(m) : 0;
+}
+
+/* ---------- Login ---------- */
+function tryLogin() {
+  const pass = $("passInput").value.trim();
+  if (pass === REP_PASS) {
+    sessionStorage.setItem(SESSION_KEY, "1");
+    showApp();
+  } else {
+    $("loginError").style.display = "block";
+  }
+}
+function logout() {
+  sessionStorage.removeItem(SESSION_KEY);
+  location.reload();
+}
+function showApp() {
+  $("login").hidden = true;
+  $("app").hidden = false;
+  // iconos estáticos
+  $("refreshBtn").innerHTML = IC.refresh;
+  $("logoutBtn").innerHTML = IC.logout;
+  $("addBtn").innerHTML = IC.plus;
+  $("closeAdd").innerHTML = IC.close;
+  $("routeBtn").innerHTML = IC.route + " Ruta óptima";
+  bindEvents();
+  loadOrders();
+  startGPS();
+  registerSW();
+}
+
+/* ---------- Almacenamiento compartido ---------- */
+function loadOrders() {
+  try {
+    const raw = localStorage.getItem(ORDERS_KEY);
+    orders = raw ? JSON.parse(raw) : [];
+  } catch (e) { orders = []; }
+
+  if (orders.length === 0 && !localStorage.getItem(DEMO_KEY)) {
+    orders = seedDemo();
+    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    localStorage.setItem(DEMO_KEY, "1");
+  }
+  render();
+  updateSyncBadge();
+}
+function saveOrders() {
+  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+  broadcast();
+  updateSyncBadge();
+}
+function broadcast() {
+  try {
+    if (!window.__bc) window.__bc = new BroadcastChannel("tacosOrders");
+    window.__bc.postMessage({ ts: Date.now() });
+  } catch (e) {}
+}
+function updateSyncBadge() {
+  const d = new Date();
+  $("syncBadge").textContent = "↻ " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+}
+
+/* ---------- Render ---------- */
+function render() {
+  updateStats();
+  const list = $("list");
+  let view = orders.slice().reverse();
+  if (currentFilter !== "Todo") view = view.filter(o => o.status === currentFilter);
+
+  $("emptyMsg").hidden = view.length !== 0;
+
+  list.innerHTML = view.map(o => cardHTML(o)).join("");
+}
+function updateStats() {
+  const pend = orders.filter(o => o.status === "Pendiente").length;
+  const transit = orders.filter(o => o.status === "En Camino").length;
+  const cash = orders
+    .filter(o => o.status !== "Entregado" && o.deliveryType !== "Local" && (!o.paymentMethod || o.paymentMethod === "Efectivo"))
+    .reduce((a, o) => a + parseTotal(o.total), 0);
+  $("statPending").textContent = pend;
+  $("statTransit").textContent = transit;
+  $("statCash").textContent = fmtMoney(cash);
+}
+function statusClass(s) {
+  return s === "Pendiente" ? "b-pendiente" : s === "En Camino" ? "b-encamino" : "b-entregado";
+}
+function itemsText(o) {
+  if (Array.isArray(o.items) && o.items.length) return o.items.map(i => `${i.title} x${i.quantity || 1}`).join(", ");
+  return o.items || "—";
+}
+function cardHTML(o) {
+  const paid = o.paymentMethod && o.paymentMethod !== "Efectivo";
+  const payTxt = paid ? `Pagado · ${o.paymentMethod}` : "Cobrar en efectivo";
+  const addr = o.address ? o.address : (o.deliveryType === "Local" ? "Recoger en local" : "");
+
+  const actions = [];
+  if (o.address) actions.push(`<a class="btn btn-maps" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.address)}" target="_blank" rel="noopener">${IC.nav} Ir en GPS</a>`);
+  if (o.customerPhone) actions.push(`<a class="btn btn-call" href="tel:${o.customerPhone.replace(/[^0-9+]/g, "")}">${IC.phone} Llamar</a>`);
+  if (o.status === "Pendiente") actions.push(`<button class="btn btn-go" onclick="setStatus(${o.id},'En Camino')">${IC.nav} Marcar en camino</button>`);
+  if (o.status === "En Camino") actions.push(`<button class="btn btn-done" onclick="setStatus(${o.id},'Entregado')">${IC.map} Confirmar entrega</button>`);
+
+  return `
+  <div class="order">
+    <div class="order-top">
+      <div>
+        <span class="badge ${statusClass(o.status)}">${o.status}</span>
+        <div class="order-id">#${o.id} · ${o.date ? o.date : ""}</div>
+      </div>
+      <div>
+        <div class="order-total">${o.total}</div>
+        <div class="order-pay ${paid ? "pay-paid" : "pay-cash"}">${payTxt}</div>
+      </div>
+    </div>
+    <div class="order-cust">${escapeHTML(o.customerName || "Sin nombre")}</div>
+    <div class="order-items">${escapeHTML(itemsText(o))}</div>
+    <div class="addr-box">
+      <span class="lbl">📍 Dirección</span>${escapeHTML(addr)}
+      ${o.notes ? `<div class="notes">📝 ${escapeHTML(o.notes)}</div>` : ""}
+    </div>
+    <div class="actions">${actions.join("")}</div>
+  </div>`;
+}
+function escapeHTML(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ---------- Acciones ---------- */
+function setStatus(id, newStatus) {
+  const o = orders.find(x => x.id === id);
+  if (!o) return;
+  o.status = newStatus;
+  o.dateStatus = new Date().toLocaleString("es-MX");
+  saveOrders();
+  render();
+  toast(newStatus === "Entregado" ? "✅ Entrega confirmada" : "🛵 En camino");
+}
+function generateRoute() {
+  const pend = orders.filter(o => o.status !== "Entregado" && o.address && o.deliveryType !== "Local");
+  if (pend.length === 0) return alert("No hay entregas a domicilio pendientes.");
+  const dest = encodeURIComponent(pend[pend.length - 1].address);
+  const wp = pend.slice(0, -1).map(o => encodeURIComponent(o.address)).join("|");
+  const url = `https://www.google.com/maps/dir/?api=1&origin=My+Location&destination=${dest}${wp ? "&waypoints=" + wp : ""}`;
+  window.open(url, "_blank");
+}
+
+/* ---------- Alta manual ---------- */
+function openAdd() {
+  $("addForm").reset();
+  $("addModal").hidden = false;
+}
+function closeAdd() { $("addModal").hidden = true; }
+function submitAdd(e) {
+  e.preventDefault();
+  const total = parseTotal($("fTotal").value) || 0;
+  const o = {
+    id: Date.now(),
+    items: [{ title: $("fItems").value.trim() || "Pedido", quantity: 1 }],
+    total: fmtMoney(total),
+    customerName: $("fName").value.trim(),
+    customerPhone: $("fPhone").value.trim(),
+    deliveryType: $("fAddr").value.trim() ? "Entrega" : "Local",
+    paymentMethod: $("fPay").value,
+    address: $("fAddr").value.trim(),
+    notes: $("fNotes").value.trim(),
+    status: "Pendiente",
+    date: new Date().toLocaleString("es-MX")
+  };
+  orders.push(o);
+  saveOrders();
+  render();
+  closeAdd();
+  toast("📦 Entrega agregada");
+}
+
+/* ---------- GPS ---------- */
+function startGPS() {
+  const el = $("gpsStatus");
+  if (!navigator.geolocation) { el.textContent = "📡 GPS no disponible"; return; }
+  navigator.geolocation.watchPosition(
+    pos => {
+      const d = { lat: pos.coords.latitude, lng: pos.coords.longitude, ts: Date.now() };
+      localStorage.setItem(LOC_KEY, JSON.stringify(d));
+      el.textContent = `📡 GPS ok · ${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}`;
+    },
+    err => { el.textContent = "📡 GPS: permiso denegado"; },
+    { enableHighAccuracy: true, maximumAge: 5000 }
+  );
+}
+
+/* ---------- Toast ---------- */
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.hidden = true), 1800);
+}
+
+/* ---------- Demo ---------- */
+function seedDemo() {
+  const now = new Date().toLocaleString("es-MX");
+  return [
+    { id: 101, customerName: "María González", customerPhone: "3312345678", deliveryType: "Entrega",
+      paymentMethod: "Efectivo", address: "Av. Hidalgo 45, Centro, El Grullo", notes: "Tocar timbre verde",
+      items: [{ title: "5 Tacos + Agua Fresca", quantity: 1 }], total: fmtMoney(90), status: "Pendiente", date: now },
+    { id: 102, customerName: "Carlos Ramírez", customerPhone: "3323456789", deliveryType: "Entrega",
+      paymentMethod: "Transferencia", address: "Calle Juárez 12, Col. Centro, El Grullo", notes: "",
+      items: [{ title: "Torta de Carnitas", quantity: 2 }], total: fmtMoney(100), status: "En Camino", date: now },
+    { id: 103, customerName: "Lucía Pérez", customerPhone: "3334567890", deliveryType: "Entrega",
+      paymentMethod: "Efectivo", address: "Prolongación Morelos 88, El Grullo", notes: "Casa gris con portón",
+      items: [{ title: "Orden de 7 tacos", quantity: 1 }], total: fmtMoney(100), status: "Pendiente", date: now }
+  ];
+}
+
+/* ---------- Service Worker ---------- */
+function registerSW() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+}
+
+/* ---------- Eventos ---------- */
+function bindEvents() {
+  $("loginBtn").addEventListener("click", tryLogin);
+  $("passInput").addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
+  $("logoutBtn").addEventListener("click", logout);
+  $("refreshBtn").addEventListener("click", () => { loadOrders(); toast("🔄 Sincronizado"); });
+  $("routeBtn").addEventListener("click", generateRoute);
+  $("addBtn").addEventListener("click", openAdd);
+  $("closeAdd").addEventListener("click", closeAdd);
+  $("addForm").addEventListener("submit", submitAdd);
+  $("addModal").addEventListener("click", e => { if (e.target === $("addModal")) closeAdd(); });
+
+  document.querySelectorAll(".tab").forEach(t => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+      t.classList.add("active");
+      currentFilter = t.dataset.filter;
+      render();
+    });
+  });
+
+  // Sincronización entre pestañas/dispositivos
+  window.addEventListener("storage", e => { if (e.key === ORDERS_KEY) { loadOrders(); } });
+  try {
+    const bc = new BroadcastChannel("tacosOrders");
+    bc.onmessage = () => loadOrders();
+    window.__bc = bc;
+  } catch (e) {}
+}
+
+/* ---------- Arranque ---------- */
+window.addEventListener("DOMContentLoaded", () => {
+  if (sessionStorage.getItem(SESSION_KEY) === "1") showApp();
+});
