@@ -1,15 +1,3 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.5.2'
-    }
-}
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+// Root build file. No se declaran repositorios aquí:
+// se definen en settings.gradle (dependencyResolutionManagement).
+// El plugin de Android se aplica en app/build.gradle.
