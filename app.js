@@ -1,16 +1,16 @@
 /* =========================================================
    Tacos Olmedo · Repartidor  (PWA / APK)
-   Sincroniza con la web vía localStorage('tacosOrders')
-   + BroadcastChannel + evento 'storage' (multi-pestaña/dispositivo).
+   Mejorado: mapa en vivo, filtros por fecha, historial.
+   Sincroniza con la web vía localStorage('tacosOrders').
    ========================================================= */
 
-const REP_PASS = "tacos789";          // En producción: mover a backend.
-const ORDERS_KEY = "tacosOrders";      // Misma clave que la web de pedidos.
+const REP_PASS = "tacos789";
+const ORDERS_KEY = "tacosOrders";
 const LOC_KEY = "repLocation";
 const DEMO_KEY = "repDemoSeeded";
 const SESSION_KEY = "repAuth";
+const GEO_KEY = "repGeocache";
 
-/* ---------- Iconos SVG (offline) ---------- */
 const IC = {
   refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>',
   logout:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>',
@@ -22,17 +22,24 @@ const IC = {
   route:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h6a3 3 0 000-6H9a3 3 0 010-6h6"/></svg>'
 };
 
-/* ---------- Estado ---------- */
 let orders = [];
 let currentFilter = "Todo";
+let currentRep = "Repartidor 01";     // repartidor seleccionado en el dropdown
+let dateFrom = null, dateTo = null;   // filtros de fecha (Date)
+let map, meMarker, orderMarkers = {};
+let myPos = null;
 
-/* ---------- Utilidades ---------- */
 const $ = id => document.getElementById(id);
 const fmtMoney = n => "$" + Number(n).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function parseTotal(t) {
   if (typeof t === "number") return t;
   const m = String(t).replace(/[^0-9.]/g, "");
   return m ? parseFloat(m) : 0;
+}
+function orderDate(o) {
+  // o.date es string local; parsear a Date
+  const d = new Date(o.date);
+  return isNaN(d) ? new Date(0) : d;
 }
 
 /* ---------- Login ---------- */
@@ -52,19 +59,19 @@ function logout() {
 function showApp() {
   $("login").hidden = true;
   $("app").hidden = false;
-  // iconos estáticos
   $("refreshBtn").innerHTML = IC.refresh;
   $("logoutBtn").innerHTML = IC.logout;
   $("addBtn").innerHTML = IC.plus;
   $("closeAdd").innerHTML = IC.close;
   $("routeBtn").innerHTML = IC.route + " Ruta óptima";
   bindEvents();
+  initMap();
   loadOrders();
   startGPS();
   registerSW();
 }
 
-/* ---------- Almacenamiento compartido ---------- */
+/* ---------- Almacenamiento ---------- */
 function loadOrders() {
   try {
     const raw = localStorage.getItem(ORDERS_KEY);
@@ -95,25 +102,44 @@ function updateSyncBadge() {
   $("syncBadge").textContent = "↻ " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
 }
 
+/* ---------- Filtrado por fecha + estado ---------- */
+function inDateRange(o) {
+  const d = orderDate(o);
+  if (dateFrom && d < dateFrom) return false;
+  if (dateTo) {
+    const end = new Date(dateTo); end.setHours(23, 59, 59, 999);
+    if (d > end) return false;
+  }
+  return true;
+}
+function visibleOrders() {
+  let v = orders.slice().reverse();
+  v = v.filter(o => (o.repartidor || "Repartidor 01") === currentRep);
+  if (currentFilter !== "Todo") v = v.filter(o => o.status === currentFilter);
+  if (dateFrom || dateTo) v = v.filter(inDateRange);
+  return v;
+}
+
 /* ---------- Render ---------- */
 function render() {
   updateStats();
   const list = $("list");
-  let view = orders.slice().reverse();
-  if (currentFilter !== "Todo") view = view.filter(o => o.status === currentFilter);
-
+  const view = visibleOrders();
   $("emptyMsg").hidden = view.length !== 0;
-
   list.innerHTML = view.map(o => cardHTML(o)).join("");
+  updateMap();
+  updateHistory();
 }
 function updateStats() {
   const pend = orders.filter(o => o.status === "Pendiente").length;
   const transit = orders.filter(o => o.status === "En Camino").length;
+  const done = orders.filter(o => o.status === "Entregado").length;
   const cash = orders
     .filter(o => o.status !== "Entregado" && o.deliveryType !== "Local" && (!o.paymentMethod || o.paymentMethod === "Efectivo"))
     .reduce((a, o) => a + parseTotal(o.total), 0);
   $("statPending").textContent = pend;
   $("statTransit").textContent = transit;
+  $("statDone").textContent = done;
   $("statCash").textContent = fmtMoney(cash);
 }
 function statusClass(s) {
@@ -159,6 +185,72 @@ function escapeHTML(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/* ---------- Historial del periodo ---------- */
+function updateHistory() {
+  const box = $("historyBox");
+  const base = (dateFrom || dateTo) ? orders.filter(inDateRange) : orders;
+  const delivered = base.filter(o => o.status === "Entregado");
+  const cash = delivered
+    .filter(o => (!o.paymentMethod || o.paymentMethod === "Efectivo"))
+    .reduce((a, o) => a + parseTotal(o.total), 0);
+  const dist = myPos ? (myPos.accDist ? myPos.accDist.toFixed(2) + " km" : "—") : "—";
+
+  $("hCount").textContent = delivered.length;
+  $("hCash").textContent = fmtMoney(cash);
+  $("hKm").textContent = dist;
+  box.hidden = !(dateFrom || dateTo);
+}
+
+/* ---------- MAPA EN VIVO ---------- */
+function initMap() {
+  if (typeof L === "undefined") { $("gpsStatus").textContent = "📡 Mapa: Leaflet no cargó (revisa red)"; return; }
+  map = L.map("map", { zoomControl: true }).setView([19.4326, -99.1332], 13);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap", maxZoom: 19
+  }).addTo(map);
+  meMarker = L.circleMarker([19.4326, -99.1332], {
+    radius: 8, color: "#ff4d00", fillColor: "#ff4d00", fillOpacity: 1, weight: 3
+  }).addTo(map).bindPopup("Tu ubicación");
+}
+function geocode(addr) {
+  const cache = JSON.parse(localStorage.getItem(GEO_KEY) || "{}");
+  if (cache[addr]) return Promise.resolve(cache[addr]);
+  return fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addr)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data && data[0]) {
+        const c = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+        cache[addr] = c; localStorage.setItem(GEO_KEY, JSON.stringify(cache));
+        return c;
+      }
+      return null;
+    }).catch(() => null);
+}
+function pinColor(status) {
+  return status === "Pendiente" ? "#ffc107" : status === "En Camino" ? "#007bff" : "#28a745";
+}
+async function updateMap() {
+  if (!map) return;
+  // limpiar pines previos
+  Object.values(orderMarkers).forEach(m => map.removeLayer(m));
+  orderMarkers = {};
+
+  const view = visibleOrders().filter(o => o.address);
+  const pts = [];
+  if (myPos) { meMarker.setLatLng([myPos.lat, myPos.lng]); pts.push([myPos.lat, myPos.lng]); }
+
+  for (const o of view) {
+    const c = await geocode(o.address);
+    if (!c) continue;
+    const m = L.circleMarker(c, { radius: 7, color: pinColor(o.status), fillColor: pinColor(o.status), fillOpacity: .9, weight: 2 })
+      .addTo(map)
+      .bindPopup(`<b>${escapeHTML(o.customerName || "")}</b><br>${escapeHTML(o.address)}<br>${o.status}`);
+    orderMarkers[o.id] = m;
+    pts.push(c);
+  }
+  if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 16 });
+}
+
 /* ---------- Acciones ---------- */
 function setStatus(id, newStatus) {
   const o = orders.find(x => x.id === id);
@@ -189,6 +281,7 @@ function submitAdd(e) {
   const total = parseTotal($("fTotal").value) || 0;
   const o = {
     id: Date.now(),
+    repartidor: $("fRep").value,
     items: [{ title: $("fItems").value.trim() || "Pedido", quantity: 1 }],
     total: fmtMoney(total),
     customerName: $("fName").value.trim(),
@@ -207,19 +300,33 @@ function submitAdd(e) {
   toast("📦 Entrega agregada");
 }
 
-/* ---------- GPS ---------- */
+/* ---------- GPS con distancia acumulada ---------- */
 function startGPS() {
   const el = $("gpsStatus");
   if (!navigator.geolocation) { el.textContent = "📡 GPS no disponible"; return; }
   navigator.geolocation.watchPosition(
     pos => {
-      const d = { lat: pos.coords.latitude, lng: pos.coords.longitude, ts: Date.now() };
-      localStorage.setItem(LOC_KEY, JSON.stringify(d));
-      el.textContent = `📡 GPS ok · ${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}`;
+      const n = { lat: pos.coords.latitude, lng: pos.coords.longitude, ts: Date.now() };
+      // distancia acumulada
+      if (myPos) {
+        const d = haversine(myPos.lat, myPos.lng, n.lat, n.lng);
+        n.accDist = (myPos.accDist || 0) + d;
+      } else { n.accDist = 0; }
+      myPos = n;
+      localStorage.setItem(LOC_KEY, JSON.stringify(n));
+      el.textContent = `📡 GPS ok · ${n.lat.toFixed(4)}, ${n.lng.toFixed(4)}`;
+      if (meMarker) meMarker.setLatLng([n.lat, n.lng]);
+      updateHistory();
     },
     err => { el.textContent = "📡 GPS: permiso denegado"; },
     { enableHighAccuracy: true, maximumAge: 5000 }
   );
+}
+function haversine(a, b, c, d) {
+  const R = 6371, r = Math.PI / 180;
+  const dLat = (c - a) * r, dLon = (d - b) * r;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
 }
 
 /* ---------- Toast ---------- */
@@ -232,19 +339,44 @@ function toast(msg) {
   toastTimer = setTimeout(() => (t.hidden = true), 1800);
 }
 
+/* ---------- Filtros de fecha ---------- */
+function applyDateQuick() {
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  dateFrom = hoy; dateTo = null;
+  $("dateFrom").value = toISO(hoy); $("dateTo").value = "";
+  render();
+  toast("📅 Filtrando: Hoy");
+}
+function clearDate() {
+  dateFrom = dateTo = null;
+  $("dateFrom").value = ""; $("dateTo").value = "";
+  render();
+  toast("📅 Sin filtro de fecha");
+}
+function onDateChange() {
+  dateFrom = $("dateFrom").value ? new Date($("dateFrom").value + "T00:00:00") : null;
+  dateTo = $("dateTo").value ? new Date($("dateTo").value + "T00:00:00") : null;
+  render();
+}
+function toISO(d) { return d.toISOString().slice(0, 10); }
+
 /* ---------- Demo ---------- */
 function seedDemo() {
-  const now = new Date().toLocaleString("es-MX");
+  const now = new Date();
+  const mk = (h) => { const d = new Date(now); d.setHours(d.getHours() - h); return d.toLocaleString("es-MX"); };
   return [
-    { id: 101, customerName: "María González", customerPhone: "3312345678", deliveryType: "Entrega",
+    { id: 101, repartidor: "Repartidor 01", customerName: "María González", customerPhone: "3312345678", deliveryType: "Entrega",
       paymentMethod: "Efectivo", address: "Av. Hidalgo 45, Centro, El Grullo", notes: "Tocar timbre verde",
-      items: [{ title: "5 Tacos + Agua Fresca", quantity: 1 }], total: fmtMoney(90), status: "Pendiente", date: now },
-    { id: 102, customerName: "Carlos Ramírez", customerPhone: "3323456789", deliveryType: "Entrega",
+      items: [{ title: "5 Tacos + Agua Fresca", quantity: 1 }], total: fmtMoney(90), status: "Pendiente", date: mk(1) },
+    { id: 102, repartidor: "Repartidor 01", customerName: "Carlos Ramírez", customerPhone: "3323456789", deliveryType: "Entrega",
       paymentMethod: "Transferencia", address: "Calle Juárez 12, Col. Centro, El Grullo", notes: "",
-      items: [{ title: "Torta de Carnitas", quantity: 2 }], total: fmtMoney(100), status: "En Camino", date: now },
-    { id: 103, customerName: "Lucía Pérez", customerPhone: "3334567890", deliveryType: "Entrega",
+      items: [{ title: "Torta de Carnitas", quantity: 2 }], total: fmtMoney(100), status: "En Camino", date: mk(2) },
+    { id: 103, repartidor: "Repartidor 02", customerName: "Lucía Pérez", customerPhone: "3334567890", deliveryType: "Entrega",
       paymentMethod: "Efectivo", address: "Prolongación Morelos 88, El Grullo", notes: "Casa gris con portón",
-      items: [{ title: "Orden de 7 tacos", quantity: 1 }], total: fmtMoney(100), status: "Pendiente", date: now }
+      items: [{ title: "Orden de 7 tacos", quantity: 1 }], total: fmtMoney(100), status: "Pendiente", date: mk(0.5) },
+    { id: 104, repartidor: "Repartidor 02", customerName: "Pedro López", customerPhone: "3345678901", deliveryType: "Entrega",
+      paymentMethod: "Efectivo", address: "Calle Hidalgo 200, El Grullo", notes: "",
+      items: [{ title: "5 Tacos", quantity: 1 }], total: fmtMoney(75), status: "Entregado", date: mk(26) }
   ];
 }
 
@@ -266,6 +398,15 @@ function bindEvents() {
   $("closeAdd").addEventListener("click", closeAdd);
   $("addForm").addEventListener("submit", submitAdd);
   $("addModal").addEventListener("click", e => { if (e.target === $("addModal")) closeAdd(); });
+  $("dateQuick").addEventListener("click", applyDateQuick);
+  $("dateClear").addEventListener("click", clearDate);
+  $("dateFrom").addEventListener("change", onDateChange);
+  $("dateTo").addEventListener("change", onDateChange);
+  $("repSelect").addEventListener("change", e => {
+    currentRep = e.target.value;
+    render();
+    toast("👤 " + currentRep);
+  });
 
   document.querySelectorAll(".tab").forEach(t => {
     t.addEventListener("click", () => {
@@ -276,8 +417,7 @@ function bindEvents() {
     });
   });
 
-  // Sincronización entre pestañas/dispositivos
-  window.addEventListener("storage", e => { if (e.key === ORDERS_KEY) { loadOrders(); } });
+  window.addEventListener("storage", e => { if (e.key === ORDERS_KEY) loadOrders(); });
   try {
     const bc = new BroadcastChannel("tacosOrders");
     bc.onmessage = () => loadOrders();

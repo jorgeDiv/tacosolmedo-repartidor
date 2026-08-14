@@ -9,7 +9,9 @@ const ASSETS = [
   './manifest.webmanifest',
   './assets/icon-192.png',
   './assets/icon-512.png',
-  './assets/maskable-512.png'
+  './assets/maskable-512.png',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 ];
 
 self.addEventListener('install', e => {

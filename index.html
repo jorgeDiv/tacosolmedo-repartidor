@@ -12,6 +12,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="styles.css">
+  <!-- Leaflet (mapa open-source, sin API key). Cacheado por sw.js para offline. -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
 <body>
 
@@ -43,6 +48,10 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <select id="repSelect" class="rep-select" title="Repartidor">
+          <option value="Repartidor 01">Repartidor 01</option>
+          <option value="Repartidor 02">Repartidor 02</option>
+        </select>
         <span id="syncBadge" class="sync-badge" title="Última sincronización">—</span>
         <button id="refreshBtn" class="icon-btn" title="Sincronizar" aria-label="Sincronizar"></button>
         <button id="logoutBtn" class="icon-btn" title="Salir" aria-label="Salir"></button>
@@ -61,6 +70,10 @@
           <span class="stat-lbl">En ruta</span>
         </div>
         <div class="stat">
+          <span class="stat-num" id="statDone">0</span>
+          <span class="stat-lbl">Entregadas</span>
+        </div>
+        <div class="stat">
           <span class="stat-num stat-cash" id="statCash">$0</span>
           <span class="stat-lbl">Por cobrar</span>
         </div>
@@ -72,6 +85,24 @@
         <button id="routeBtn" class="btn-route">Ruta óptima</button>
       </div>
 
+      <!-- MAPA EN VIVO -->
+      <div id="map" class="map-live"></div>
+      <p class="map-legend">
+        <span><i class="dot dot-me"></i> Tú (GPS)</span>
+        <span><i class="dot dot-pend"></i> Pendiente</span>
+        <span><i class="dot dot-way"></i> En camino</span>
+      </p>
+
+      <!-- Filtros de fecha -->
+      <div class="date-filter">
+        <label class="field-label" for="dateFrom">Desde</label>
+        <input type="date" id="dateFrom" class="field-input field-inline">
+        <label class="field-label" for="dateTo">Hasta</label>
+        <input type="date" id="dateTo" class="field-input field-inline">
+        <button id="dateQuick" class="btn-quick">Hoy</button>
+        <button id="dateClear" class="btn-quick btn-quick-ghost">Todo</button>
+      </div>
+
       <!-- Tabs -->
       <nav class="tabs" id="tabs">
         <button class="tab active" data-filter="Todo">Todos</button>
@@ -81,6 +112,16 @@
       </nav>
 
       <div id="list" class="list"></div>
+
+      <!-- Historial resumen -->
+      <div id="historyBox" class="history" hidden>
+        <div class="history-title">📊 Historial del periodo</div>
+        <div class="history-grid">
+          <div><span id="hCount">0</span><small>Entregas</small></div>
+          <div><span id="hCash">$0</span><small>Cobrado</small></div>
+          <div><span id="hKm">—</span><small>Dist. GPS</small></div>
+        </div>
+      </div>
 
       <p id="emptyMsg" class="empty" hidden>No hay entregas en esta sección.</p>
     </main>
@@ -98,6 +139,12 @@
         <form id="addForm" class="form">
           <label class="field-label" for="fName">Cliente</label>
           <input id="fName" class="field-input" required placeholder="Ej. Juan Pérez">
+
+          <label class="field-label" for="fRep">Repartidor asignado</label>
+          <select id="fRep" class="field-input">
+            <option value="Repartidor 01">Repartidor 01</option>
+            <option value="Repartidor 02">Repartidor 02</option>
+          </select>
 
           <label class="field-label" for="fPhone">Teléfono</label>
           <input id="fPhone" class="field-input" inputmode="tel" placeholder="Ej. 3312345678">
