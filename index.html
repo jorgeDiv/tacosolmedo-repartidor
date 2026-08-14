@@ -28,12 +28,20 @@
       </div>
       <h1 class="login-title">Tacos Olmedo<span>´s</span></h1>
       <p class="login-sub">Panel de entregas · Tacos Olmedo</p>
-      <label class="field-label" for="userInput">Usuario</label>
-      <input type="text" id="userInput" class="field-input" placeholder="Ej. repartidor01" autocomplete="username">
+      <label class="field-label" for="userSelect">Perfil</label>
+      <select id="userSelect" class="field-input">
+        <option value="admin">Administrador</option>
+        <option value="jefe">Jefe Taquero</option>
+        <option value="cocinero">Cocinero</option>
+        <option value="asistente">Asistente de Cocina</option>
+        <option value="empaquetador">Empaquetador</option>
+        <option value="repartidor01">Repartidor 01</option>
+        <option value="repartidor02">Repartidor 02</option>
+      </select>
       <label class="field-label" for="passInput">Contraseña de acceso</label>
       <input type="password" id="passInput" class="field-input" placeholder="••••••••" autocomplete="current-password">
       <button id="loginBtn" class="btn-primary">Acceder a mis entregas</button>
-      <p id="loginError" class="login-error">Usuario o contraseña incorrectos</p>
+      <p id="loginError" class="login-error">Contraseña incorrecta</p>
       <p class="login-hint">Perfiles: jefe / cocinero / asistente / empaquetador / repartidor01 / repartidor02</p>
     </div>
   </div>
@@ -127,6 +135,68 @@
 
       <p id="emptyMsg" class="empty" hidden>No hay entregas en esta sección.</p>
     </main>
+
+    <!-- ============ PANEL ADMINISTRADOR ============ -->
+    <section id="adminPanel" class="admin-panel" hidden>
+      <nav class="admin-tabs" id="adminTabs">
+        <button class="admin-tab active" data-sec="secProductos">📦 Productos</button>
+        <button class="admin-tab" data-sec="secPermisos">🔑 Permisos</button>
+        <button class="admin-tab" data-sec="secVentas">📈 Ventas</button>
+        <button class="admin-tab" data-sec="secCompras">🛒 Compras</button>
+        <button class="admin-tab" data-sec="secRutas">🛰️ Rutas</button>
+      </nav>
+
+      <!-- Productos / catálogo + precios -->
+      <div id="secProductos" class="admin-sec">
+        <h3 class="admin-h">Catálogo de productos</h3>
+        <div class="admin-form">
+          <input id="catName" class="field-input" placeholder="Nombre (ej. Taco de carnitas)">
+          <input id="catPrice" class="field-input field-inline" type="number" step="0.01" min="0" placeholder="Precio">
+          <button id="catAdd" class="btn-primary">Agregar</button>
+        </div>
+        <div id="catList" class="admin-list"></div>
+      </div>
+
+      <!-- Permisos -->
+      <div id="secPermisos" class="admin-sec" hidden>
+        <h3 class="admin-h">Permisos de acceso</h3>
+        <p class="admin-note">El Administrador puede cambiar la clave de cualquier perfil.</p>
+        <div id="permList" class="admin-list"></div>
+      </div>
+
+      <!-- Ventas -->
+      <div id="secVentas" class="admin-sec" hidden>
+        <h3 class="admin-h">Monitoreo de ventas</h3>
+        <div class="admin-kpis">
+          <div><span id="jdTotal">0</span><small>Pedidos</small></div>
+          <div><span id="jdIngresos">$0</span><small>Ingresos</small></div>
+          <div><span id="jdEfic">0%</span><small>Eficiencia</small></div>
+          <div><span id="jdPorCobrar">$0</span><small>Por cobrar</small></div>
+        </div>
+        <h4 class="admin-sub">Repartos por repartidor</h4>
+        <div id="jefeReps" class="admin-list"></div>
+      </div>
+
+      <!-- Compras -->
+      <div id="secCompras" class="admin-sec" hidden>
+        <h3 class="admin-h">Monitoreo de compras</h3>
+        <div class="admin-form">
+          <input id="compConcepto" class="field-input" placeholder="Concepto (ej. Carne, tortillas)">
+          <input id="compMonto" class="field-input field-inline" type="number" step="0.01" min="0" placeholder="Monto">
+          <button id="compAdd" class="btn-primary">Registrar</button>
+        </div>
+        <div class="admin-total">Total gastado: <span id="compTotal">$0</span></div>
+        <div id="compList" class="admin-list"></div>
+      </div>
+
+      <!-- Rutas -->
+      <div id="secRutas" class="admin-sec" hidden>
+        <h3 class="admin-h">Monitoreo de rutas</h3>
+        <p class="admin-note">Última posición conocida por repartidor y entregas activas. (El GPS en vivo entre dispositivos requiere backend).</p>
+        <div id="rutasBox" class="admin-list"></div>
+      </div>
+    </section>
+
 
     <!-- FAB: agregar entrega -->
     <button id="addBtn" class="fab" title="Agregar entrega" aria-label="Agregar entrega"></button>

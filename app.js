@@ -12,8 +12,9 @@ const SESSION_KEY = "repAuth";
 const GEO_KEY = "repGeocache";
 
 // Perfiles de acceso. Cada perfil define rol y (si aplica) el repartidor asignado.
-// Las claves son por defecto; cámbialas en este arreglo.
-const PROFILES = [
+// Las claves son por defecto; el Administrador puede cambiarlas (se guardan en PROFILES_KEY).
+const PROFILES_DEFAULT = [
+  { user: "admin",        pass: "admin123", name: "Administrador",        rol: "admin",     repartidor: null },
   { user: "jefe",        pass: "jt2025",   name: "Jefe Taquero",        rol: "local",    repartidor: null },
   { user: "cocinero",     pass: "coc2025",  name: "Cocinero",            rol: "local",    repartidor: null },
   { user: "asistente",    pass: "as2025",   name: "Asistente de Cocina", rol: "local",    repartidor: null },
@@ -21,6 +22,12 @@ const PROFILES = [
   { user: "repartidor01", pass: "r012025",  name: "Repartidor 01",       rol: "repartidor", repartidor: "Repartidor 01" },
   { user: "repartidor02", pass: "r022025",  name: "Repartidor 02",       rol: "repartidor", repartidor: "Repartidor 02" }
 ];
+const PROFILES_KEY = "tacosProfiles";
+// Cargar perfiles (pueden haber sido modificados por el admin)
+let PROFILES;
+try { PROFILES = JSON.parse(localStorage.getItem(PROFILES_KEY)) || PROFILES_DEFAULT; }
+catch (e) { PROFILES = PROFILES_DEFAULT; }
+function saveProfiles() { localStorage.setItem(PROFILES_KEY, JSON.stringify(PROFILES)); }
 let activeProfile = null;
 
 const IC = {
@@ -56,7 +63,7 @@ function orderDate(o) {
 
 /* ---------- Login ---------- */
 function tryLogin() {
-  const user = $("userInput").value.trim().toLowerCase();
+  const user = ($("userSelect") ? $("userSelect").value : "").trim().toLowerCase();
   const pass = $("passInput").value;
   const profile = PROFILES.find(p => p.user === user && p.pass === pass);
   if (profile) {
@@ -77,20 +84,24 @@ function showApp() {
   $("app").hidden = false;
   // Personalizar header con el perfil activo
   const isRep = activeProfile && activeProfile.rol === "repartidor";
+  const isJefe = activeProfile && activeProfile.user === "jefe";
+  const isAdmin = activeProfile && activeProfile.rol === "admin";
   $("topbarName").textContent = activeProfile ? activeProfile.name : "RUTA OLMEDO";
   // Repartidores: fijar currentRep y ocultar dropdown
   if (isRep) {
     currentRep = activeProfile.repartidor;
     if ($("repSelect")) $("repSelect").hidden = true;
   } else {
-    currentRep = "Repartidor 01"; // personal local ve por defecto Rep 01 (puede cambiar)
+    currentRep = "Repartidor 01"; // personal local/admin/jefe ve por defecto Rep 01 (puede cambiar)
     if ($("repSelect")) $("repSelect").hidden = false;
   }
-  $("refreshBtn").innerHTML = IC.refresh;
-  $("logoutBtn").innerHTML = IC.logout;
-  $("addBtn").innerHTML = IC.plus;
-  $("closeAdd").innerHTML = IC.close;
-  $("routeBtn").innerHTML = IC.route + " Ruta óptima";
+  // Dashboard de control solo para el Jefe
+  if ($("jefeDash")) $("jefeDash").hidden = !isJefe;
+  if ($("jefeDashTitle")) $("jefeDashTitle").hidden = !isJefe;
+  // Panel de Administrador: visible solo para admin
+  if ($("adminPanel")) $("adminPanel").hidden = !isAdmin;
+  if ($("adminTabs")) $("adminTabs").hidden = !isAdmin;
+  if (isAdmin) { renderCatalog(); renderPermisos(); renderCompras(); renderRutas(); }
   bindEvents();
   initMap();
   loadOrders();
@@ -141,7 +152,8 @@ function inDateRange(o) {
 }
 function visibleOrders() {
   let v = orders.slice().reverse();
-  v = v.filter(o => (o.repartidor || "Repartidor 01") === currentRep);
+  const isJefe = activeProfile && activeProfile.user === "jefe";
+  if (!isJefe) v = v.filter(o => (o.repartidor || "Repartidor 01") === currentRep);
   if (currentFilter !== "Todo") v = v.filter(o => o.status === currentFilter);
   if (dateFrom || dateTo) v = v.filter(inDateRange);
   return v;
@@ -150,12 +162,12 @@ function visibleOrders() {
 /* ---------- Render ---------- */
 function render() {
   updateStats();
-  const list = $("list");
   const view = visibleOrders();
   $("emptyMsg").hidden = view.length !== 0;
-  list.innerHTML = view.map(o => cardHTML(o)).join("");
+  $("list").innerHTML = view.map(o => cardHTML(o)).join("");
   updateMap();
   updateHistory();
+  updateJefeDash();
 }
 function updateStats() {
   const pend = orders.filter(o => o.status === "Pendiente").length;
@@ -169,6 +181,154 @@ function updateStats() {
   $("statDone").textContent = done;
   $("statCash").textContent = fmtMoney(cash);
 }
+function updateJefeDash() {
+  if (!activeProfile || activeProfile.user !== "jefe") return;
+  const total = orders.length;
+  const done = orders.filter(o => o.status === "Entregado").length;
+  const transit = orders.filter(o => o.status === "En Camino").length;
+  const pend = orders.filter(o => o.status === "Pendiente").length;
+  const ingresos = orders.reduce((a, o) => a + parseTotal(o.total), 0);
+  const porCobrar = orders
+    .filter(o => o.status !== "Entregado" && o.deliveryType !== "Local" && (!o.paymentMethod || o.paymentMethod === "Efectivo"))
+    .reduce((a, o) => a + parseTotal(o.total), 0);
+  const efic = total ? Math.round((done / total) * 100) : 0;
+  // repartos por repartidor
+  const reps = {};
+  orders.forEach(o => {
+    const r = o.repartidor || "Repartidor 01";
+    reps[r] = reps[r] || { total: 0, done: 0 };
+    reps[r].total++;
+    if (o.status === "Entregado") reps[r].done++;
+  });
+  const repRows = Object.keys(reps).map(r => {
+    const e = reps[r].total ? Math.round((reps[r].done / reps[r].total) * 100) : 0;
+    return `<div class="dash-rep-row"><span>${r}</span><span>${reps[r].done}/${reps[r].total} (${e}%)</span></div>`;
+  }).join("") || "<div class='dash-rep-row'><span>Sin datos</span></div>";
+
+  $("jdTotal").textContent = total;
+  $("jdIngresos").textContent = fmtMoney(ingresos);
+  $("jdPend").textContent = pend;
+  $("jdTransit").textContent = transit;
+  $("jdDone").textContent = done;
+  $("jdPorCobrar").textContent = fmtMoney(porCobrar);
+  $("jdEfic").textContent = efic + "%";
+  $("jefeReps").innerHTML = repRows;
+}
+
+/* ---------- ADMIN: Catálogo de productos ---------- */
+const CATALOG_KEY = "tacosCatalog";
+function getCatalog() {
+  try { return JSON.parse(localStorage.getItem(CATALOG_KEY)) || []; }
+  catch (e) { return []; }
+}
+function renderCatalog() {
+  const box = $("catList");
+  if (!box) return;
+  const cat = getCatalog();
+  if (cat.length === 0) { box.innerHTML = "<p class='empty'>Sin productos. Crea el primero.</p>"; return; }
+  box.innerHTML = cat.map((p, i) =>
+    `<div class="cat-row">
+       <span class="cat-name">${escapeHTML(p.name)}</span>
+       <span class="cat-price" id="catPrice${i}">${fmtMoney(p.price)}</span>
+       <button class="btn-mini" onclick="editPrice(${i})">Precio</button>
+       <button class="btn-mini btn-del" onclick="delProduct(${i})">✕</button>
+     </div>`).join("");
+}
+function addProduct() {
+  const name = $("catName").value.trim();
+  const price = parseTotal($("catPrice").value);
+  if (!name) return toast("Escribe el nombre del producto");
+  const cat = getCatalog();
+  cat.push({ name, price });
+  localStorage.setItem(CATALOG_KEY, JSON.stringify(cat));
+  $("catName").value = ""; $("catPrice").value = "";
+  renderCatalog();
+  toast("✅ Producto agregado");
+}
+function editPrice(i) {
+  const cat = getCatalog();
+  const np = parseFloat(prompt("Nuevo precio para " + cat[i].name, String(cat[i].price)));
+  if (isNaN(np)) return;
+  cat[i].price = np;
+  localStorage.setItem(CATALOG_KEY, JSON.stringify(cat));
+  renderCatalog();
+  toast("💲 Precio actualizado");
+}
+function delProduct(i) {
+  const cat = getCatalog();
+  cat.splice(i, 1);
+  localStorage.setItem(CATALOG_KEY, JSON.stringify(cat));
+  renderCatalog();
+}
+
+/* ---------- ADMIN: Permisos (editar claves) ---------- */
+function renderPermisos() {
+  const box = $("permList");
+  if (!box) return;
+  box.innerHTML = PROFILES.map((p, i) =>
+    `<div class="perm-row">
+       <span class="perm-name">${escapeHTML(p.name)} <small>(${escapeHTML(p.user)})</small></span>
+       <input type="password" id="permPass${i}" class="field-input field-inline" placeholder="Nueva clave" value="${p.pass}">
+       <button class="btn-mini" onclick="savePerm(${i})">Guardar</button>
+     </div>`).join("");
+}
+function savePerm(i) {
+  const np = $("permPass" + i).value;
+  if (!np) return toast("Escribe una clave");
+  PROFILES[i].pass = np;
+  saveProfiles();
+  renderPermisos();
+  toast("🔑 Clave de " + PROFILES[i].name + " actualizada");
+}
+
+/* ---------- ADMIN: Compras (gastos) ---------- */
+const COMPRAS_KEY = "tacosCompras";
+function getCompras() {
+  try { return JSON.parse(localStorage.getItem(COMPRAS_KEY)) || []; }
+  catch (e) { return []; }
+}
+function renderCompras() {
+  const box = $("compList");
+  if (!box) return;
+  const cs = getCompras();
+  const total = cs.reduce((a, c) => a + parseTotal(c.monto), 0);
+  $("compTotal").textContent = fmtMoney(total);
+  if (cs.length === 0) { box.innerHTML = "<p class='empty'>Sin compras registradas.</p>"; return; }
+  box.innerHTML = cs.slice().reverse().map(c =>
+    `<div class="comp-row"><span>${escapeHTML(c.concepto)}</span><span>${fmtMoney(c.monto)}</span></div>`
+  ).join("");
+}
+function addCompra() {
+  const concepto = $("compConcepto").value.trim();
+  const monto = parseTotal($("compMonto").value);
+  if (!concepto || !monto) return toast("Completa concepto y monto");
+  const cs = getCompras();
+  cs.push({ concepto, monto, date: new Date().toLocaleString("es-MX") });
+  localStorage.setItem(COMPRAS_KEY, JSON.stringify(cs));
+  $("compConcepto").value = ""; $("compMonto").value = "";
+  renderCompras();
+  toast("🛒 Compra registrada");
+}
+
+/* ---------- ADMIN: Monitoreo de rutas de repartidores ---------- */
+function renderRutas() {
+  const box = $("rutasBox");
+  if (!box) return;
+  // NOTA: el monitoreo de GPS en vivo entre dispositivos requiere un backend.
+  // Aquí mostramos la última posición conocida por repartidor (de localStorage si
+  // el repartidor usa el mismo dispositivo) y las entregas activas en el mapa.
+  const reps = ["Repartidor 01", "Repartidor 02"];
+  box.innerHTML = reps.map(r => {
+    const loc = JSON.parse(localStorage.getItem("repLocation_" + r) || "null");
+    const pos = loc ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : "Sin señal";
+    const activas = orders.filter(o => o.repartidor === r && o.status !== "Entregado").length;
+    return `<div class="ruta-row"><span class="ruta-name">${r}</span>
+      <span>📍 ${pos}</span><span>📦 ${activas} activas</span></div>`;
+  }).join("");
+  // Pines en el mapa (todas las entregas con dirección)
+  if (map) updateMap();
+}
+
 function statusClass(s) {
   return s === "Pendiente" ? "b-pendiente" : s === "En Camino" ? "b-encamino" : "b-entregado";
 }
@@ -418,7 +578,7 @@ function registerSW() {
 function bindLoginEvents() {
   $("loginBtn").addEventListener("click", tryLogin);
   $("passInput").addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
-  $("userInput").addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
+  if ($("userSelect")) $("userSelect").addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
 }
 function bindEvents() {
   bindLoginEvents();
@@ -445,6 +605,18 @@ function bindEvents() {
       t.classList.add("active");
       currentFilter = t.dataset.filter;
       render();
+    });
+  });
+
+  // Admin: catálogo, compras, tabs de admin (guards por si no existen)
+  if ($("catAdd")) $("catAdd").addEventListener("click", addProduct);
+  if ($("compAdd")) $("compAdd").addEventListener("click", addCompra);
+  document.querySelectorAll(".admin-tab").forEach(t => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".admin-tab").forEach(x => x.classList.remove("active"));
+      t.classList.add("active");
+      const sec = t.dataset.sec;
+      document.querySelectorAll(".admin-sec").forEach(s => s.hidden = (s.id !== sec));
     });
   });
 
