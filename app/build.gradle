@@ -17,6 +17,9 @@ android {
                 keyAlias ksAlias
                 storePassword ksPass
                 keyPassword kPass
+                v1SigningEnabled true
+                v2SigningEnabled true
+                v3SigningEnabled true
             }
         }
     }

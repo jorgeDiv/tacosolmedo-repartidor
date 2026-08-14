@@ -58,3 +58,9 @@ jobs:
           name: repartidor-apk-signed
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      - name: Verify signing
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk)
+          echo "=== apksigner verify ==="
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs -v "$APK" || true
