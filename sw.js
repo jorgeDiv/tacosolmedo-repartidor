@@ -1,6 +1,6 @@
 // Service Worker - Tacos Olmedo Repartidor
 // Cachea la app para uso offline (modo "APK").
-const CACHE = 'ruta-olmedo-v1';
+const CACHE = 'ruta-olmedo-v2';
 const ASSETS = [
   './',
   './index.html',

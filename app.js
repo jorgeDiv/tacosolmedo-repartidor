@@ -388,9 +388,12 @@ function registerSW() {
 }
 
 /* ---------- Eventos ---------- */
-function bindEvents() {
+function bindLoginEvents() {
   $("loginBtn").addEventListener("click", tryLogin);
   $("passInput").addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
+}
+function bindEvents() {
+  bindLoginEvents();
   $("logoutBtn").addEventListener("click", logout);
   $("refreshBtn").addEventListener("click", () => { loadOrders(); toast("🔄 Sincronizado"); });
   $("routeBtn").addEventListener("click", generateRoute);
@@ -427,5 +430,6 @@ function bindEvents() {
 
 /* ---------- Arranque ---------- */
 window.addEventListener("DOMContentLoaded", () => {
+  bindLoginEvents();
   if (sessionStorage.getItem(SESSION_KEY) === "1") showApp();
 });
