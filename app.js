@@ -14,12 +14,12 @@ const GEO_KEY = "repGeocache";
 // Perfiles de acceso. Cada perfil define rol y (si aplica) el repartidor asignado.
 // Las claves son por defecto; cámbialas en este arreglo.
 const PROFILES = [
-  { user: "jefe",        pass: "jt2026",   name: "Jefe Taquero",        rol: "local",    repartidor: null },
-  { user: "cocinero",     pass: "coc2026",  name: "Cocinero",            rol: "local",    repartidor: null },
-  { user: "asistente",    pass: "as2026",   name: "Asistente de Cocina", rol: "local",    repartidor: null },
-  { user: "empaquetador", pass: "emp2026",  name: "Empaquetador",        rol: "local",    repartidor: null },
-  { user: "repartidor01", pass: "r012026",  name: "Repartidor 01",       rol: "repartidor", repartidor: "Repartidor 01" },
-  { user: "repartidor02", pass: "r022026",  name: "Repartidor 02",       rol: "repartidor", repartidor: "Repartidor 02" }
+  { user: "jefe",        pass: "jt2025",   name: "Jefe Taquero",        rol: "local",    repartidor: null },
+  { user: "cocinero",     pass: "coc2025",  name: "Cocinero",            rol: "local",    repartidor: null },
+  { user: "asistente",    pass: "as2025",   name: "Asistente de Cocina", rol: "local",    repartidor: null },
+  { user: "empaquetador", pass: "emp2025",  name: "Empaquetador",        rol: "local",    repartidor: null },
+  { user: "repartidor01", pass: "r012025",  name: "Repartidor 01",       rol: "repartidor", repartidor: "Repartidor 01" },
+  { user: "repartidor02", pass: "r022025",  name: "Repartidor 02",       rol: "repartidor", repartidor: "Repartidor 02" }
 ];
 let activeProfile = null;
 
