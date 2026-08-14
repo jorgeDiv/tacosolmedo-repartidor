@@ -74,3 +74,7 @@ jobs:
           $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs -v "$APK" || true
           echo "=== jarsigner verify (AAB) ==="
           jarsigner -verify -verbose -certs "$AAB" || true
+          echo "=== minSdk/targetSdk del APK (aapt2 dump) ==="
+          $ANDROID_HOME/build-tools/34.0.0/aapt2 dump xmltree --file AndroidManifest.xml "$APK" 2>/dev/null | grep -iE "minSdk|targetSdk" || true
+          echo "=== minSdk/targetSdk del AAB (aapt2 dump) ==="
+          $ANDROID_HOME/build-tools/34.0.0/aapt2 dump xmltree --file base/manifest/AndroidManifest.xml "$AAB" 2>/dev/null | grep -iE "minSdk|targetSdk" || true
