@@ -6,6 +6,21 @@ android {
     namespace 'com.tacosolmedo.repartidor'
     compileSdk 34
 
+    signingConfigs {
+        release {
+            def ksPath = System.getenv("KEYSTORE_PATH")
+            def ksAlias = System.getenv("KEYSTORE_ALIAS")
+            def ksPass = System.getenv("KEYSTORE_PASSWORD")
+            def kPass = System.getenv("KEY_PASSWORD")
+            if (ksPath != null && ksAlias != null) {
+                storeFile file(ksPath)
+                keyAlias ksAlias
+                storePassword ksPass
+                keyPassword kPass
+            }
+        }
+    }
+
     defaultConfig {
         applicationId "com.tacosolmedo.repartidor"
         minSdk 24
@@ -18,6 +33,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 

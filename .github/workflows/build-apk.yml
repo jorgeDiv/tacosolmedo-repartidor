@@ -1,4 +1,4 @@
-name: Build Repartidor APK
+name: Build Repartidor APK (signed)
 
 on:
   workflow_dispatch:
@@ -26,15 +26,35 @@ jobs:
           sdkmanager "platforms;android-34" "build-tools;34.0.0"
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Build APK (unsigned)
+      - name: Generate upload keystore
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/keystore
+          keytool -genkeypair \
+            -v -keystore $GITHUB_WORKSPACE/keystore/repartidor.jks \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias "$KEYSTORE_ALIAS" \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -dname "CN=Tacos Olmedo, OU=Repartidor, O=TacosOlmedo, L=El Grullo, ST=Jalisco, C=MX"
+        env:
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Build signed APK
         uses: gradle/gradle-build-action@v3
         with:
           gradle-version: 8.9
           arguments: assembleRelease --no-daemon
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/keystore/repartidor.jks
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Upload APK artifact
+      - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: repartidor-apk
+          name: repartidor-apk-signed
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
