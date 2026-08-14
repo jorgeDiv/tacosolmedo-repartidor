@@ -41,11 +41,11 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Build signed APK
+      - name: Build signed APK + AAB (Play)
         uses: gradle/gradle-build-action@v3
         with:
           gradle-version: 8.9
-          arguments: assembleRelease --no-daemon
+          arguments: assembleRelease bundleRelease --no-daemon
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/keystore/repartidor.jks
           KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
@@ -59,8 +59,18 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
+      - name: Upload signed AAB (Google Play) artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repartidor-aab
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
       - name: Verify signing
         run: |
           APK=$(ls app/build/outputs/apk/release/*.apk)
-          echo "=== apksigner verify ==="
+          AAB=$(ls app/build/outputs/bundle/release/*.aab)
+          echo "=== apksigner verify (APK) ==="
           $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs -v "$APK" || true
+          echo "=== apksigner verify (AAB) ==="
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs -v "$AAB" || true
