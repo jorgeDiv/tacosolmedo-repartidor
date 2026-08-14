@@ -1,2 +1,4 @@
 node_modules/
 lt_out.txt
+local.properties
+*.apk
