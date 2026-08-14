@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#ff4d00">
+  <title>Ruta Olmedo · Repartidor</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="assets/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icon-512.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============ LOGIN ============ -->
+  <div id="login" class="login-screen">
+    <div class="login-card">
+      <div class="login-logo">
+        <img src="assets/icon-512.png" alt="Tacos Olmedo">
+      </div>
+      <h1 class="login-title">SOY <span>REPARTIDOR</span></h1>
+      <p class="login-sub">Panel de entregas · Tacos Olmedo</p>
+      <label class="field-label" for="passInput">Contraseña de acceso</label>
+      <input type="password" id="passInput" class="field-input" placeholder="••••••••" autocomplete="current-password">
+      <button id="loginBtn" class="btn-primary">Acceder a mis entregas</button>
+      <p id="loginError" class="login-error">Contraseña incorrecta</p>
+      <p class="login-hint">Instala la app desde el menú del navegador (⋯ → Instalar) para usarla como APK.</p>
+    </div>
+  </div>
+
+  <!-- ============ APP ============ -->
+  <div id="app" class="app" hidden>
+
+    <header class="topbar">
+      <div class="topbar-brand">
+        <img src="assets/icon-192.png" alt="" class="topbar-logo">
+        <div>
+          <div class="topbar-title">RUTA <span>ENTREGA</span></div>
+          <div class="topbar-loc" id="gpsStatus">📡 GPS: conectando…</div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="syncBadge" class="sync-badge" title="Última sincronización">—</span>
+        <button id="refreshBtn" class="icon-btn" title="Sincronizar" aria-label="Sincronizar"></button>
+        <button id="logoutBtn" class="icon-btn" title="Salir" aria-label="Salir"></button>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- Stats -->
+      <section class="stats">
+        <div class="stat">
+          <span class="stat-num" id="statPending">0</span>
+          <span class="stat-lbl">Pendientes</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="statTransit">0</span>
+          <span class="stat-lbl">En ruta</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num stat-cash" id="statCash">$0</span>
+          <span class="stat-lbl">Por cobrar</span>
+        </div>
+      </section>
+
+      <!-- Panel header -->
+      <div class="panel-head">
+        <h2 class="panel-title">Mis entregas</h2>
+        <button id="routeBtn" class="btn-route">Ruta óptima</button>
+      </div>
+
+      <!-- Tabs -->
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-filter="Todo">Todos</button>
+        <button class="tab" data-filter="Pendiente">Por salir</button>
+        <button class="tab" data-filter="En Camino">En entrega</button>
+        <button class="tab" data-filter="Entregado">Entregados</button>
+      </nav>
+
+      <div id="list" class="list"></div>
+
+      <p id="emptyMsg" class="empty" hidden>No hay entregas en esta sección.</p>
+    </main>
+
+    <!-- FAB: agregar entrega -->
+    <button id="addBtn" class="fab" title="Agregar entrega" aria-label="Agregar entrega"></button>
+
+    <!-- ============ MODAL AGREGAR ============ -->
+    <div id="addModal" class="modal" hidden>
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3>Nueva entrega</h3>
+          <button id="closeAdd" class="icon-btn"></button>
+        </div>
+        <form id="addForm" class="form">
+          <label class="field-label" for="fName">Cliente</label>
+          <input id="fName" class="field-input" required placeholder="Ej. Juan Pérez">
+
+          <label class="field-label" for="fPhone">Teléfono</label>
+          <input id="fPhone" class="field-input" inputmode="tel" placeholder="Ej. 3312345678">
+
+          <label class="field-label" for="fAddr">Dirección</label>
+          <input id="fAddr" class="field-input" required placeholder="Calle, número, colonia">
+
+          <label class="field-label" for="fItems">Pedido</label>
+          <input id="fItems" class="field-input" placeholder="Ej. 5 tacos, 1 agua fresca">
+
+          <div class="form-row">
+            <div>
+              <label class="field-label" for="fTotal">Total (MXN)</label>
+              <input id="fTotal" class="field-input" type="number" step="0.01" min="0" placeholder="0.00">
+            </div>
+            <div>
+              <label class="field-label" for="fPay">Pago</label>
+              <select id="fPay" class="field-input">
+                <option value="Efectivo">Efectivo</option>
+                <option value="Transferencia">Transferencia</option>
+                <option value="MercadoLibre">Mercado Libre</option>
+              </select>
+            </div>
+          </div>
+
+          <label class="field-label" for="fNotes">Notas</label>
+          <textarea id="fNotes" class="field-input" rows="2" placeholder="Referencias, instrucciones…"></textarea>
+
+          <button type="submit" class="btn-primary">Guardar entrega</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

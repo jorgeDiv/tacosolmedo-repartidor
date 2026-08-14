@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.tacosolmedo.repartidor'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.tacosolmedo.repartidor"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    // Evita fallos con recursos de AndroidX no usados
+    lintOptions {
+        abortOnError false
+    }
+}
+
+dependencies {
+    // Sin librerías externas: WebView es del sistema. Compilación ligera.
+}
