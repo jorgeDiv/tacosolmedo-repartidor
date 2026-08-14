@@ -4,12 +4,24 @@
    Sincroniza con la web vía localStorage('tacosOrders').
    ========================================================= */
 
-const REP_PASS = "tacos789";
+const REP_PASS = "tacos789"; // ya no se usa; mantenido por compatibilidad
 const ORDERS_KEY = "tacosOrders";
 const LOC_KEY = "repLocation";
 const DEMO_KEY = "repDemoSeeded";
 const SESSION_KEY = "repAuth";
 const GEO_KEY = "repGeocache";
+
+// Perfiles de acceso. Cada perfil define rol y (si aplica) el repartidor asignado.
+// Las claves son por defecto; cámbialas en este arreglo.
+const PROFILES = [
+  { user: "jefe",        pass: "jt2026",   name: "Jefe Taquero",        rol: "local",    repartidor: null },
+  { user: "cocinero",     pass: "coc2026",  name: "Cocinero",            rol: "local",    repartidor: null },
+  { user: "asistente",    pass: "as2026",   name: "Asistente de Cocina", rol: "local",    repartidor: null },
+  { user: "empaquetador", pass: "emp2026",  name: "Empaquetador",        rol: "local",    repartidor: null },
+  { user: "repartidor01", pass: "r012026",  name: "Repartidor 01",       rol: "repartidor", repartidor: "Repartidor 01" },
+  { user: "repartidor02", pass: "r022026",  name: "Repartidor 02",       rol: "repartidor", repartidor: "Repartidor 02" }
+];
+let activeProfile = null;
 
 const IC = {
   refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>',
@@ -44,21 +56,36 @@ function orderDate(o) {
 
 /* ---------- Login ---------- */
 function tryLogin() {
-  const pass = $("passInput").value.trim();
-  if (pass === REP_PASS) {
-    sessionStorage.setItem(SESSION_KEY, "1");
+  const user = $("userInput").value.trim().toLowerCase();
+  const pass = $("passInput").value;
+  const profile = PROFILES.find(p => p.user === user && p.pass === pass);
+  if (profile) {
+    activeProfile = profile;
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user: profile.user }));
     showApp();
   } else {
     $("loginError").style.display = "block";
   }
 }
 function logout() {
+  activeProfile = null;
   sessionStorage.removeItem(SESSION_KEY);
   location.reload();
 }
 function showApp() {
   $("login").hidden = true;
   $("app").hidden = false;
+  // Personalizar header con el perfil activo
+  const isRep = activeProfile && activeProfile.rol === "repartidor";
+  $("topbarName").textContent = activeProfile ? activeProfile.name : "RUTA OLMEDO";
+  // Repartidores: fijar currentRep y ocultar dropdown
+  if (isRep) {
+    currentRep = activeProfile.repartidor;
+    if ($("repSelect")) $("repSelect").hidden = true;
+  } else {
+    currentRep = "Repartidor 01"; // personal local ve por defecto Rep 01 (puede cambiar)
+    if ($("repSelect")) $("repSelect").hidden = false;
+  }
   $("refreshBtn").innerHTML = IC.refresh;
   $("logoutBtn").innerHTML = IC.logout;
   $("addBtn").innerHTML = IC.plus;
@@ -391,6 +418,7 @@ function registerSW() {
 function bindLoginEvents() {
   $("loginBtn").addEventListener("click", tryLogin);
   $("passInput").addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
+  $("userInput").addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
 }
 function bindEvents() {
   bindLoginEvents();
@@ -431,5 +459,12 @@ function bindEvents() {
 /* ---------- Arranque ---------- */
 window.addEventListener("DOMContentLoaded", () => {
   bindLoginEvents();
-  if (sessionStorage.getItem(SESSION_KEY) === "1") showApp();
+  const saved = sessionStorage.getItem(SESSION_KEY);
+  if (saved) {
+    try {
+      const { user } = JSON.parse(saved);
+      activeProfile = PROFILES.find(p => p.user === user) || null;
+    } catch (e) { activeProfile = null; }
+    if (activeProfile) showApp();
+  }
 });

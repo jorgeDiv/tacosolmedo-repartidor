@@ -28,11 +28,13 @@
       </div>
       <h1 class="login-title">SOY <span>REPARTIDOR</span></h1>
       <p class="login-sub">Panel de entregas · Tacos Olmedo</p>
+      <label class="field-label" for="userInput">Usuario</label>
+      <input type="text" id="userInput" class="field-input" placeholder="Ej. repartidor01" autocomplete="username">
       <label class="field-label" for="passInput">Contraseña de acceso</label>
       <input type="password" id="passInput" class="field-input" placeholder="••••••••" autocomplete="current-password">
       <button id="loginBtn" class="btn-primary">Acceder a mis entregas</button>
-      <p id="loginError" class="login-error">Contraseña incorrecta</p>
-      <p class="login-hint">Instala la app desde el menú del navegador (⋯ → Instalar) para usarla como APK.</p>
+      <p id="loginError" class="login-error">Usuario o contraseña incorrectos</p>
+      <p class="login-hint">Perfiles: jefe / cocinero / asistente / empaquetador / repartidor01 / repartidor02</p>
     </div>
   </div>
 
@@ -43,7 +45,7 @@
       <div class="topbar-brand">
         <img src="assets/icon-192.png" alt="" class="topbar-logo">
         <div>
-          <div class="topbar-title">RUTA <span>ENTREGA</span></div>
+          <div class="topbar-title" id="topbarName">RUTA <span>ENTREGA</span></div>
           <div class="topbar-loc" id="gpsStatus">📡 GPS: conectando…</div>
         </div>
       </div>
