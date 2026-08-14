@@ -72,5 +72,5 @@ jobs:
           AAB=$(ls app/build/outputs/bundle/release/*.aab)
           echo "=== apksigner verify (APK) ==="
           $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs -v "$APK" || true
-          echo "=== apksigner verify (AAB) ==="
-          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs -v "$AAB" || true
+          echo "=== jarsigner verify (AAB) ==="
+          jarsigner -verify -verbose -certs "$AAB" || true
